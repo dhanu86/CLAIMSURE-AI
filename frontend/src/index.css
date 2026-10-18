@@ -1,0 +1,47 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #F8F5F0;
+    color: #343330;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    overflow-x: hidden;
+  }
+}
+
+/* Custom scrollbar for nude aesthetics */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F8F5F0;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #DCC7B8;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #A89586;
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(220, 199, 184, 0.4);
+}
+
+.nude-gradient {
+  background: linear-gradient(135deg, #FAF8F5 0%, #E9DFD3 50%, #DCC7B8 100%);
+}
+
+.subtle-ring {
+  box-shadow: 0 0 0 3px rgba(220, 199, 184, 0.3);
+}
