@@ -1,3 +1,4 @@
+
 # ClaimSure-AI — Full-Stack Healthcare Insurance & Medical Coding Intelligence Platform
 
 **ClaimSure-AI** is a complete, full-stack, AI-powered healthcare insurance portal designed for Doctors, Patients, and Medical Coders.
@@ -153,3 +154,6 @@ claimsure-ai/
 * All protected API routes enforce role-based access control.
 * Tokens are issued as JWT Access & Refresh pairs with expiration limits.
 * Uploaded files are stored securely outside public static web roots.
+=======
+# CLAIMSURE-AI
+>>>>>>> 19038af848f0b2b61a029990319656f7e7bfbb98
