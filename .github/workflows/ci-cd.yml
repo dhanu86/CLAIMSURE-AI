@@ -44,6 +44,14 @@ jobs:
         run: |
           python -m pytest tests -v
 
+      - name: "MLOps: RAG Retrieval & Agentic AI Benchmark Evaluation"
+        env:
+          DATABASE_URL: sqlite:///./test.db
+          JWT_SECRET_KEY: test-secret-key-for-ci-cd-pipeline-2026!
+        run: |
+          python -m pytest tests/test_mlops_rag_eval.py -v -s
+
+
   # ------------------------------------------------------------------
   # Job 2: Lint, Typecheck & Build React Frontend
   # ------------------------------------------------------------------
@@ -119,3 +127,24 @@ jobs:
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
           vercel-args: '--prod'
           working-directory: ./
+
+  # ------------------------------------------------------------------
+  # Job 4: Continuous Deployment for Backend AI/RAG Service (Render)
+  # ------------------------------------------------------------------
+  deploy-backend:
+    name: Deploy Backend AI/RAG Service
+    needs: [ backend-test ]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Trigger Render Cloud Deployment
+        run: |
+          if [ -n "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" ]; then
+            echo "Triggering automated Render deploy hook..."
+            curl -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+            echo "Render deployment triggered successfully!"
+          else
+            echo "::notice title=Render Auto-Deploy::Render auto-deploys on git push via render.yaml configuration."
+          fi
+
