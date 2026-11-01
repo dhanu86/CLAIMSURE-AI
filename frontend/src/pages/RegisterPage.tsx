@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ShieldCheck, Stethoscope, UserCheck, FileSearch, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { API_BASE_URL } from '../services/api';
 import type { UserRole } from '../types';
 
 const formatApiError = (err: any): string => {
@@ -14,7 +15,10 @@ const formatApiError = (err: any): string => {
     }
   }
   if (err.message === 'Network Error' || !err.response) {
-    return 'Unable to connect to backend server. Please verify backend is running on http://localhost:8000';
+    if (API_BASE_URL.includes('localhost')) {
+      return `Unable to connect to backend server at ${API_BASE_URL}. If running locally, please start your backend (python -m uvicorn app.main:app --port 8000). If deployed on Vercel, please set VITE_API_URL to your deployed cloud backend.`;
+    }
+    return `Unable to reach backend at ${API_BASE_URL}. If your cloud backend is spinning up from idle sleep (e.g. Render takes ~30-50s to wake), please wait a moment and try again.`;
   }
   return err.message || 'Registration failed. Please check inputs.';
 };
