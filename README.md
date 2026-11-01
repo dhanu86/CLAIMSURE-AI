@@ -154,6 +154,42 @@ claimsure-ai/
 * All protected API routes enforce role-based access control.
 * Tokens are issued as JWT Access & Refresh pairs with expiration limits.
 * Uploaded files are stored securely outside public static web roots.
-=======
-# CLAIMSURE-AI
->>>>>>> 19038af848f0b2b61a029990319656f7e7bfbb98
+
+---
+
+## 🚀 CI/CD Pipeline & Vercel Deployment
+
+This project includes a production-grade **GitHub Actions CI/CD pipeline** ([.github/workflows/ci-cd.yml](file:///.github/workflows/ci-cd.yml)) and out-of-the-box **Vercel configuration** ([vercel.json](file:///vercel.json) & [frontend/vercel.json](file:///frontend/vercel.json)).
+
+### 1. GitHub Actions Automated Pipeline
+Every `push` and `pull_request` to `main` runs:
+1. **Backend CI**: Sets up Python 3.10 and executes the Pytest test suite (`test_auth`, `test_doctor`, `test_patient`, `test_coder`).
+2. **Frontend CI**: Sets up Node.js 20, runs Oxlint linting, and runs `npm run build` (TypeScript check + Vite production bundle).
+3. **Continuous Deployment (CD)**: Automatically deploys the verified application to Vercel (Production on `main`, Previews on pull requests).
+
+---
+
+### 2. Deploying to Vercel
+
+#### Method A: Direct Vercel Git Integration (Zero-Config, Recommended)
+1. Push your repository to GitHub.
+2. Go to [vercel.com](https://vercel.com) and click **"Add New..." -> "Project"**.
+3. Import your GitHub repository.
+4. Vercel automatically detects the root [vercel.json](file:///vercel.json).
+   * **Framework Preset:** Vite
+   * **Root Directory:** `./` (or `frontend`)
+   * **Build Command:** `npm run build --prefix frontend`
+   * **Output Directory:** `frontend/dist`
+5. In **Environment Variables**, add:
+   * `VITE_API_URL` = `https://<your-backend-api-url>/api`
+6. Click **Deploy**. Vercel will build and assign your live production URL (with client-side SPA routing preconfigured).
+
+#### Method B: Automated GitHub Actions Deployment
+If you prefer deploying directly via GitHub Actions:
+1. In your GitHub Repository, navigate to **Settings -> Secrets and variables -> Actions**.
+2. Add the following repository secrets:
+   * `VERCEL_TOKEN`: Your Vercel Personal Access Token (from Vercel Account Settings -> Tokens).
+   * `VERCEL_ORG_ID`: Your Vercel Team/Account ID.
+   * `VERCEL_PROJECT_ID`: Your Vercel Project ID.
+   * *(Optional)* `VITE_API_URL`: Your live FastAPI backend URL.
+3. Push to `main` — GitHub Actions will test and deploy automatically!

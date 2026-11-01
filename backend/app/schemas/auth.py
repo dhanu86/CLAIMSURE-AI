@@ -18,6 +18,11 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+    new_password: str = Field(..., min_length=6)
+
+
 class UserOut(BaseModel):
     id: str
     email: str

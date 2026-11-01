@@ -7,6 +7,7 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password: string) => Promise<UserRole>;
   register: (data: any) => Promise<UserRole>;
+  resetPassword: (email: string, newPassword: string) => Promise<UserRole>;
   logout: () => void;
   refreshProfile: () => Promise<void>;
 }
@@ -36,7 +37,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (email: string, password: string): Promise<UserRole> => {
-    const res = await api.post<AuthResponse>('/auth/login', { email, password });
+    const cleanEmail = email.trim().toLowerCase();
+    const res = await api.post<AuthResponse>('/auth/login', { email: cleanEmail, password });
     const { access_token, refresh_token, user: userData } = res.data;
     localStorage.setItem('claimsure_access_token', access_token);
     localStorage.setItem('claimsure_refresh_token', refresh_token);
@@ -45,7 +47,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const register = async (data: any): Promise<UserRole> => {
+    if (data.email) data.email = data.email.trim().toLowerCase();
     const res = await api.post<AuthResponse>('/auth/register', data);
+    const { access_token, refresh_token, user: userData } = res.data;
+    localStorage.setItem('claimsure_access_token', access_token);
+    localStorage.setItem('claimsure_refresh_token', refresh_token);
+    setUser(userData);
+    return userData.role;
+  };
+
+  const resetPassword = async (email: string, newPassword: string): Promise<UserRole> => {
+    const cleanEmail = email.trim().toLowerCase();
+    const res = await api.post<AuthResponse>('/auth/reset-password', { email: cleanEmail, new_password: newPassword });
     const { access_token, refresh_token, user: userData } = res.data;
     localStorage.setItem('claimsure_access_token', access_token);
     localStorage.setItem('claimsure_refresh_token', refresh_token);
@@ -73,7 +86,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshProfile }}>
+    <AuthContext.Provider value={{ user, loading, login, register, resetPassword, logout, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

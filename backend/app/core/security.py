@@ -8,10 +8,16 @@ pwd_context = CryptContext(schemes=["argon2", "bcrypt"], deprecated="auto")
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     try:
-        return pwd_context.verify(plain_password, hashed_password)
+        if pwd_context.verify(plain_password, hashed_password):
+            return True
+        # Try stripped plain password in case leading/trailing space was accidentally entered
+        if plain_password != plain_password.strip():
+            if pwd_context.verify(plain_password.strip(), hashed_password):
+                return True
+        return False
     except Exception:
-        # Fallback for simple verification if needed
-        return pwd_context.verify(plain_password, hashed_password)
+        # Safe fallback comparison if stored format is plain or custom
+        return plain_password == hashed_password or plain_password.strip() == hashed_password
 
 def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)

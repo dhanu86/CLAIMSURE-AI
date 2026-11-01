@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ShieldCheck, Stethoscope, UserCheck, FileSearch, ArrowRight, AlertCircle } from 'lucide-react';
+import { ShieldCheck, Stethoscope, UserCheck, FileSearch, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import type { UserRole } from '../types';
 
@@ -24,6 +24,7 @@ export const RegisterPage: React.FC = () => {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [specialty, setSpecialty] = useState('Cardiology');
   const [insuranceProvider, setInsuranceProvider] = useState('Blue Cross Blue Shield');
@@ -47,10 +48,10 @@ export const RegisterPage: React.FC = () => {
 
     const payload = {
       role,
-      full_name: fullName,
-      email,
+      full_name: fullName.trim(),
+      email: email.trim(),
       password,
-      phone_number: phoneNumber,
+      phone_number: phoneNumber.trim(),
       specialty,
       insurance_provider: insuranceProvider,
       organization
@@ -68,6 +69,8 @@ export const RegisterPage: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const isAlreadyRegistered = error && error.toLowerCase().includes('already registered');
 
   return (
     <div className="min-h-screen bg-ivory-100 flex items-center justify-center p-4 font-sans">
@@ -125,9 +128,29 @@ export const RegisterPage: React.FC = () => {
         </div>
 
         {error && (
-          <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{error}</span>
+          <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs space-y-2">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{error}</span>
+            </div>
+            {isAlreadyRegistered && (
+              <div className="flex flex-wrap gap-2 pt-1 border-t border-red-200">
+                <button
+                  type="button"
+                  onClick={() => navigate('/login', { state: { email } })}
+                  className="px-3 py-1.5 rounded-lg bg-charcoal-700 text-white font-bold hover:bg-charcoal-900 transition-colors"
+                >
+                  Sign In With This Email →
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate('/login', { state: { email, resetMode: true } })}
+                  className="px-3 py-1.5 rounded-lg bg-white border border-red-300 text-red-800 font-bold hover:bg-red-50 transition-colors"
+                >
+                  Reset / Set New Password →
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -160,23 +183,34 @@ export const RegisterPage: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-bold text-charcoal-700 block mb-1">Password</label>
-              <input
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full px-4 py-3 text-sm rounded-xl border border-ivory-300 focus:outline-none focus:ring-2 focus:ring-nude-300 bg-ivory-50"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  minLength={6}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="At least 6 characters"
+                  className="w-full pl-4 pr-10 py-3 text-sm rounded-xl border border-ivory-300 focus:outline-none focus:ring-2 focus:ring-nude-300 bg-ivory-50"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-3.5 text-taupe-400 hover:text-charcoal-700"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
             <div>
-              <label className="text-xs font-bold text-charcoal-700 block mb-1">Phone Number</label>
+              <label className="text-xs font-bold text-charcoal-700 block mb-1">
+                Phone Number <span className="text-taupe-400 font-normal">(optional)</span>
+              </label>
               <input
                 type="text"
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
-                placeholder="(555) 234-5678"
+                placeholder="e.g. 9876543210"
                 className="w-full px-4 py-3 text-sm rounded-xl border border-ivory-300 focus:outline-none focus:ring-2 focus:ring-nude-300 bg-ivory-50"
               />
             </div>
