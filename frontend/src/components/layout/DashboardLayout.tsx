@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { 
   ShieldCheck, Stethoscope, UserCheck, FileText, Search, 
   MessageSquare, Settings, LogOut, ChevronLeft, ChevronRight,
-  PlusCircle, FolderOpen, Award, Layers, Bell, CheckCircle2, X
+  PlusCircle, FolderOpen, Award, Layers, Bell, CheckCircle2, X,
+  HeartPulse
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -166,10 +167,15 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             <p className="text-xs text-taupe-400">ClaimSure-AI Grounded Healthcare Intelligence System</p>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-sage-50 text-sage-500 border border-sage-200 text-xs font-semibold">
-              <CheckCircle2 className="w-4 h-4 text-sage-400" />
-              PostgreSQL & RAG Engine Connected
+          <div className="flex items-center gap-3">
+            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-full bg-teal-50 text-teal-800 border border-teal-200 text-xs font-semibold">
+              <HeartPulse className="w-4 h-4 text-teal-600 vital-heartbeat" />
+              <span>Vital Telemetry: 72 BPM</span>
+            </div>
+
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-sage-50 text-sage-600 border border-sage-200 text-xs font-semibold">
+              <CheckCircle2 className="w-4 h-4 text-sage-500" />
+              PostgreSQL &amp; RAG Connected
             </div>
             
             {/* Functional Notification Bell Icon */}

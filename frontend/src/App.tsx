@@ -8,6 +8,9 @@ import { DoctorDashboardPage } from './pages/DoctorDashboardPage';
 import { PatientDashboardPage } from './pages/PatientDashboardPage';
 import { CoderDashboardPage } from './pages/CoderDashboardPage';
 
+import { MedicalCursor } from './components/common/MedicalCursor';
+import { MedicalBackground } from './components/common/MedicalBackground';
+
 // Protected Route Wrapper
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRole?: string }> = ({ children, allowedRole }) => {
   const { user, loading } = useAuth();
@@ -40,6 +43,11 @@ export const App: React.FC = () => {
   return (
     <AuthProvider>
       <Router>
+        {/* Bespoke Clinical Medical Custom Cursor */}
+        <MedicalCursor />
+        {/* Living Medical Background (Continuous ECG Heartbeat & Dynamic Mesh) */}
+        <MedicalBackground />
+
         <Routes>
           {/* Public Routes */}
           <Route path="/" element={<LandingPage />} />
