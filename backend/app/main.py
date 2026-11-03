@@ -64,6 +64,8 @@ app.include_router(patient_router, prefix=settings.API_V1_STR)
 app.include_router(coder_router, prefix=settings.API_V1_STR)
 
 @app.get("/")
+@app.get("/health")
+@app.get(f"{settings.API_V1_STR}/health")
 def root():
     return {
         "status": "online",
