@@ -1,20 +1,22 @@
+
 import json
 import logging
 import re
 from typing import List, Dict, Any, Optional
+
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 try:
     from google import genai
-    from google.genai import types
     GENAI_AVAILABLE = True
 except ImportError:
     GENAI_AVAILABLE = False
 
 
 class AIService:
+
     @staticmethod
     def _get_genai_client():
         if GENAI_AVAILABLE and settings.GEMINI_API_KEY:
@@ -24,159 +26,244 @@ class AIService:
                 logger.warning(f"Failed to initialize Gemini Client: {e}")
         return None
 
-    @staticmethod
-    def search_codes_llm(query: str, system: Optional[str] = "ALL") -> List[Dict[str, Any]]:
-        """
-        LLM-Powered Medical Code Search.
-        Generates accurate ICD-10-CM, CPT, and HCPCS medical code recommendations
-        matching natural language queries (diseases, procedures, symptoms).
-        """
-        client = AIService._get_genai_client()
-        prompt = f"""You are a certified Medical Coding LLM Specialist (ICD-10-CM, CPT, HCPCS Level II).
-Task: Provide a list of official, accurate medical codes matching the user query.
-User Query: "{query}"
-Filter System: {system}
+    # ---------------------------------------------------------
+    # MEDICAL CODE SEARCH
+    # ---------------------------------------------------------
 
-Return ONLY a valid JSON array of objects with keys:
-- "id": string (unique code)
-- "code": string (e.g. "E11.9")
-- "system": string ("ICD-10-CM" or "CPT" or "HCPCS")
-- "description": string (official medical description)
-- "effective_date": "2026-01-01"
-- "usage_notes": string (coding guideline or modifier notes)
-- "clinical_evidence": string (required diagnostic or clinical criteria)
-"""
+    @staticmethod
+    def search_codes_llm(
+        query: str,
+        system: Optional[str] = "ALL"
+    ) -> List[Dict[str, Any]]:
+
+        client = AIService._get_genai_client()
+
         if client:
+            prompt = f"""
+You are a medical coding information assistant.
+
+Find possible ICD-10-CM, CPT or HCPCS code candidates for:
+{query}
+
+Requested coding system: {system}
+
+Return only a valid JSON array.
+Each object must contain:
+- id
+- code
+- system
+- description
+- effective_date
+- usage_notes
+- clinical_evidence
+
+Do not invent codes. If uncertain, return an empty array.
+These are candidates requiring verification, not final coding decisions.
+"""
+
             try:
-                res = client.models.generate_content(
+                response = client.models.generate_content(
                     model=settings.GEMINI_MODEL,
                     contents=prompt
                 )
-                if res and res.text:
-                    json_str = res.text.strip()
-                    if json_str.startswith("```json"):
-                        json_str = json_str.split("```json")[1].split("```")[0].strip()
-                    elif json_str.startswith("```"):
-                        json_str = json_str.split("```")[1].split("```")[0].strip()
-                    parsed = json.loads(json_str)
-                    if isinstance(parsed, list) and len(parsed) > 0:
-                        return parsed
-            except Exception as e:
-                logger.error(f"LLM Code Search failed: {e}")
 
-        # Fallback Medical Code Knowledge Base Generator
+                if response and response.text:
+                    json_text = response.text.strip()
+
+                    if json_text.startswith("```"):
+                        json_text = re.sub(
+                            r"^```(?:json)?\s*|\s*```$",
+                            "",
+                            json_text
+                        ).strip()
+
+                    parsed = json.loads(json_text)
+
+                    if isinstance(parsed, list):
+                        valid_results = []
+
+                        for item in parsed:
+                            if not isinstance(item, dict):
+                                continue
+
+                            if not all(
+                                item.get(field)
+                                for field in ("code", "system", "description")
+                            ):
+                                continue
+
+                            if (
+                                system
+                                and system.upper() != "ALL"
+                                and item["system"].upper() != system.upper()
+                            ):
+                                continue
+
+                            item["verification_status"] = (
+                                "AI-generated candidate - verify against "
+                                "official coding guidelines"
+                            )
+
+                            valid_results.append(item)
+
+                        return valid_results
+
+            except Exception as e:
+                logger.error(f"Gemini Code Search failed: {e}")
+
         return AIService._heuristic_code_search(query, system)
 
     @staticmethod
-    def _heuristic_code_search(query: str, system: Optional[str]) -> List[Dict[str, Any]]:
+    def _heuristic_code_search(
+        query: str,
+        system: Optional[str]
+    ) -> List[Dict[str, Any]]:
+
         q_lower = query.lower().strip()
+
+        if not q_lower:
+            return []
+
         all_codes = [
             {
-                "id": "E11.9", "code": "E11.9", "system": "ICD-10-CM",
+                "id": "E11.9",
+                "code": "E11.9",
+                "system": "ICD-10-CM",
                 "description": "Type 2 diabetes mellitus without complications",
-                "effective_date": "2026-01-01",
-                "usage_notes": "Use additional code to identify control, insulin use, or hypoglycemia.",
-                "clinical_evidence": "Documented fasting plasma glucose >= 126 mg/dL or HbA1c >= 6.5%."
+                "effective_date": "Not verified",
+                "usage_notes": "Candidate only. Confirm documentation and coding guidelines.",
+                "clinical_evidence": "Type 2 diabetes mellitus documented in the clinical record."
             },
             {
-                "id": "E11.65", "code": "E11.65", "system": "ICD-10-CM",
+                "id": "E11.65",
+                "code": "E11.65",
+                "system": "ICD-10-CM",
                 "description": "Type 2 diabetes mellitus with hyperglycemia",
-                "effective_date": "2026-01-01",
-                "usage_notes": "Code first diabetes type. Document glucose log readings.",
-                "clinical_evidence": "Blood glucose > 200 mg/dL with clinical symptoms."
+                "effective_date": "Not verified",
+                "usage_notes": "Requires documented hyperglycemia.",
+                "clinical_evidence": "Type 2 diabetes with documented hyperglycemia."
             },
             {
-                "id": "I10", "code": "I10", "system": "ICD-10-CM",
+                "id": "I10",
+                "code": "I10",
+                "system": "ICD-10-CM",
                 "description": "Essential (primary) hypertension",
-                "effective_date": "2026-01-01",
-                "usage_notes": "Includes high blood pressure, systemic arterial hypertension.",
-                "clinical_evidence": "Repeated blood pressure readings exceeding 130/80 mmHg."
+                "effective_date": "Not verified",
+                "usage_notes": "Verify the documented diagnosis.",
+                "clinical_evidence": "Essential hypertension documented by the provider."
             },
             {
-                "id": "J18.9", "code": "J18.9", "system": "ICD-10-CM",
+                "id": "J18.9",
+                "code": "J18.9",
+                "system": "ICD-10-CM",
                 "description": "Pneumonia, unspecified organism",
-                "effective_date": "2026-01-01",
-                "usage_notes": "Code specific organism if confirmed by sputum or blood culture.",
-                "clinical_evidence": "Infiltrate on chest radiography, fever, purulent cough."
+                "effective_date": "Not verified",
+                "usage_notes": "Verify organism and clinical documentation.",
+                "clinical_evidence": "Pneumonia documented without a specified organism."
             },
             {
-                "id": "M54.50", "code": "M54.50", "system": "ICD-10-CM",
+                "id": "M54.50",
+                "code": "M54.50",
+                "system": "ICD-10-CM",
                 "description": "Low back pain, unspecified",
-                "effective_date": "2026-01-01",
-                "usage_notes": "Excludes lumbago with sciatica (M54.4-).",
-                "clinical_evidence": "Localized lumbar spine tenderness, muscle spasm."
+                "effective_date": "Not verified",
+                "usage_notes": "Verify the documented pain condition.",
+                "clinical_evidence": "Unspecified low back pain documented."
             },
             {
-                "id": "K21.9", "code": "K21.9", "system": "ICD-10-CM",
-                "description": "Gastro-esophageal reflux disease without esophagitis (GERD)",
-                "effective_date": "2026-01-01",
-                "usage_notes": "Commonly referred to as GERD or acid reflux.",
-                "clinical_evidence": "Heartburn, acid regurgitation responsive to PPI therapy."
+                "id": "K21.9",
+                "code": "K21.9",
+                "system": "ICD-10-CM",
+                "description": "Gastro-esophageal reflux disease without esophagitis",
+                "effective_date": "Not verified",
+                "usage_notes": "Verify whether esophagitis is documented.",
+                "clinical_evidence": "GERD without documented esophagitis."
             },
             {
-                "id": "99214", "code": "99214", "system": "CPT",
-                "description": "Office or other outpatient visit for established patient, moderate complexity decision making, 30-39 min",
-                "effective_date": "2026-01-01",
-                "usage_notes": "Requires moderate level of medical decision making or 30 minutes total time.",
-                "clinical_evidence": "Multiple chronic illnesses with mild exacerbation or prescription drug management."
+                "id": "99214",
+                "code": "99214",
+                "system": "CPT",
+                "description": "Office or other outpatient visit for an established patient",
+                "effective_date": "Not verified",
+                "usage_notes": "Verify medical decision-making or time requirements.",
+                "clinical_evidence": "Established patient outpatient evaluation."
             },
             {
-                "id": "99213", "code": "99213", "system": "CPT",
-                "description": "Office or other outpatient visit for established patient, low complexity decision making, 20-29 min",
-                "effective_date": "2026-01-01",
-                "usage_notes": "Requires low level of medical decision making or 20 minutes total time.",
-                "clinical_evidence": "Review of 2+ chronic stable conditions or 1 acute uncomplicated illness."
+                "id": "99213",
+                "code": "99213",
+                "system": "CPT",
+                "description": "Office or other outpatient visit for an established patient",
+                "effective_date": "Not verified",
+                "usage_notes": "Verify medical decision-making or time requirements.",
+                "clinical_evidence": "Established patient outpatient evaluation."
             },
             {
-                "id": "71046", "code": "71046", "system": "CPT",
-                "description": "Radiologic examination, chest; 2 views",
-                "effective_date": "2026-01-01",
-                "usage_notes": "Standard PA and Lateral chest X-ray views.",
-                "clinical_evidence": "Diagnostic imaging for dyspnea, fever, cough, or chest trauma."
+                "id": "71046",
+                "code": "71046",
+                "system": "CPT",
+                "description": "Radiologic examination, chest, two views",
+                "effective_date": "Not verified",
+                "usage_notes": "Verify the actual imaging service performed.",
+                "clinical_evidence": "Two-view chest radiologic examination."
             },
             {
-                "id": "93000", "code": "93000", "system": "CPT",
-                "description": "Electrocardiogram, routine ECG with at least 12 leads; with interpretation and report",
-                "effective_date": "2026-01-01",
-                "usage_notes": "Global service including tracing, interpretation, and official report.",
-                "clinical_evidence": "12-lead tracing performed to evaluate chest pain, arrhythmia, or preoperative risk."
+                "id": "93000",
+                "code": "93000",
+                "system": "CPT",
+                "description": "Routine electrocardiogram with at least 12 leads",
+                "effective_date": "Not verified",
+                "usage_notes": "Verify tracing, interpretation and report.",
+                "clinical_evidence": "12-lead ECG performed and interpreted."
             },
             {
-                "id": "36415", "code": "36415", "system": "CPT",
-                "description": "Routine venipuncture (routine blood draw)",
-                "effective_date": "2026-01-01",
-                "usage_notes": "Collection of venous blood specimen.",
-                "clinical_evidence": "Venous puncture for diagnostic laboratory panels."
+                "id": "36415",
+                "code": "36415",
+                "system": "CPT",
+                "description": "Collection of venous blood by venipuncture",
+                "effective_date": "Not verified",
+                "usage_notes": "Verify the service performed.",
+                "clinical_evidence": "Venous blood specimen collected."
             },
             {
-                "id": "A0428", "code": "A0428", "system": "HCPCS",
-                "description": "Ambulance service, basic life support, non-emergency transport",
-                "effective_date": "2026-01-01",
-                "usage_notes": "Requires medical necessity documentation for transport.",
-                "clinical_evidence": "Patient unable to travel by wheelchair or commercial transport due to medical condition."
+                "id": "A0428",
+                "code": "A0428",
+                "system": "HCPCS",
+                "description": "Basic life support ambulance service, non-emergency transport",
+                "effective_date": "Not verified",
+                "usage_notes": "Verify transport circumstances and applicable requirements.",
+                "clinical_evidence": "Non-emergency basic life support ambulance transport."
             }
         ]
 
         results = []
-        for c in all_codes:
-            if system and system != "ALL" and c["system"] != system:
-                continue
-            if not q_lower or q_lower in c["code"].lower() or q_lower in c["description"].lower() or q_lower in c["clinical_evidence"].lower():
-                results.append(c)
 
-        # If empty search, generate dynamic candidate based on query
-        if not results and q_lower:
-            results.append({
-                "id": f"DX-{q_lower[:4].upper()}",
-                "code": f"R68.{len(q_lower)}",
-                "system": "ICD-10-CM",
-                "description": f"Clinical condition matching '{query}'",
-                "effective_date": "2026-01-01",
-                "usage_notes": "LLM Generated Candidate Code for specialized clinical term.",
-                "clinical_evidence": f"Documented diagnosis of {query} in attending physician progress notes."
-            })
+        for code in all_codes:
+
+            if (
+                system
+                and system.upper() != "ALL"
+                and code["system"].upper() != system.upper()
+            ):
+                continue
+
+            searchable_text = (
+                code["code"] + " " +
+                code["description"] + " " +
+                code["clinical_evidence"]
+            ).lower()
+
+            if q_lower in searchable_text:
+                candidate = code.copy()
+                candidate["verification_status"] = (
+                    "Unverified candidate - confirm using official coding guidelines"
+                )
+                results.append(candidate)
 
         return results
+
+    # ---------------------------------------------------------
+    # CHAT RESPONSE
+    # ---------------------------------------------------------
 
     @staticmethod
     def generate_chat_response(
@@ -185,55 +272,103 @@ Return ONLY a valid JSON array of objects with keys:
         conversation_history: List[Dict[str, str]],
         document_chunks: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
-        """
-        Generates role-specific grounded responses.
-        Handles Patient Claim Eligibility Analysis when policy/bill documents are uploaded!
-        """
+
         client = AIService._get_genai_client()
-        
-        context_str = ""
+
         citations = []
+        context_parts = []
+
         if document_chunks:
-            context_str = "\n\nDOCUMENT CONTEXT (GROUNDED SOURCES):\n"
+
             for chunk in document_chunks:
-                page_num = chunk.get("page_number", 1)
-                doc_name = chunk.get("document_name", "Uploaded Document")
+
+                page_num = chunk.get("page_number")
+                doc_name = chunk.get(
+                    "document_name",
+                    "Uploaded Document"
+                )
                 snippet = chunk.get("content", "")
-                context_str += f"[{doc_name} - Page {page_num}]: {snippet}\n"
+
+                context_parts.append(
+                    f"[{doc_name} - Page {page_num}]: {snippet}"
+                )
+
                 citations.append({
                     "document_name": doc_name,
                     "page_number": page_num,
-                    "snippet": snippet[:150] + "..."
+                    "snippet": snippet[:150]
                 })
 
-        system_instruction = f"""You are ClaimSure-AI, an advanced LLM healthcare insurance assistant operating for the {role} portal.
-Rule 1: If document context is provided, ground your answers strictly in the context with exact document page citations.
-Rule 2: For Patient/Coder questions about whether a bill or claim can be covered by insurance, perform a comprehensive Claim Coverage Audit:
-   - Claim Approval/Coverage Status (Potentially Covered, Potentially Denied, or More Information Needed)
-   - Detailed Reasoning & Policy Clause Breakdown
-   - Estimated Out-of-Pocket / Deductible / Copay Evaluation
-   - Required Documentation & Next Steps
-Rule 3: If asked for medical codes, provide official ICD-10-CM, CPT, or HCPCS codes with clinical evidence requirements.
-Rule 4: Use clear Markdown styling with bold headers, bullet points, and callouts.
+        context_str = "\n\n".join(context_parts)
+
+        history_str = ""
+
+        if conversation_history:
+            history_str = "\n".join(
+                f"{message.get('role', 'user')}: "
+                f"{message.get('content', '')}"
+                for message in conversation_history[-6:]
+            )
+
+        system_instruction = f"""
+You are ClaimSure-AI, a healthcare document information assistant
+for the {role} portal.
+
+Follow these rules:
+
+1. Use retrieved document evidence when available.
+2. Never invent medical diagnoses, procedure codes or clinical findings.
+3. Never invent insurance coverage, copays, deductibles or reimbursement.
+4. If information is missing, clearly say it is unavailable.
+5. Do not claim that a medical code is officially verified unless
+   an authoritative source confirms it.
+6. Cite only the actual document names and page numbers supplied.
+7. Do not make final medical, coding or insurance approval decisions.
+8. Explain information clearly and use Markdown formatting.
 """
 
-        full_prompt = f"{system_instruction}\n{context_str}\nUser Prompt: {user_message}"
+        full_prompt = f"""
+{system_instruction}
+
+RETRIEVED DOCUMENT EVIDENCE:
+{context_str if context_str else "No document evidence is available."}
+
+CONVERSATION HISTORY:
+{history_str}
+
+USER QUESTION:
+{user_message}
+"""
 
         if client:
             try:
                 response = client.models.generate_content(
                     model=settings.GEMINI_MODEL,
-                    contents=full_prompt,
+                    contents=full_prompt
                 )
+
                 if response and response.text:
                     return {
                         "content": response.text,
                         "citations": citations
                     }
-            except Exception as e:
-                logger.error(f"Gemini API call failed: {e}. Falling back to domain heuristic engine.")
 
-        return AIService._heuristic_chat_response(role, user_message, document_chunks, citations)
+            except Exception as e:
+                logger.error(
+                    f"Gemini API call failed: {e}. "
+                    "Using safe fallback."
+                )
+
+        return AIService._heuristic_chat_response(
+            role,
+            user_message,
+            document_chunks,
+            citations
+        )
+
+    # ---------------------------------------------------------
+    # SAFE CHAT FALLBACK - NO GEMINI REQUIRED
+    # ---------------------------------------------------------
 
     @staticmethod
     def _heuristic_chat_response(
@@ -242,121 +377,228 @@ Rule 4: Use clear Markdown styling with bold headers, bullet points, and callout
         document_chunks: Optional[List[Dict[str, Any]]],
         citations: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
-        msg_lower = user_message.lower()
-        
-        if document_chunks and len(document_chunks) > 0:
-            doc_context = "\n".join([c.get("content", "") for c in document_chunks[:3]])
-            first_doc = citations[0]["document_name"] if citations else "Uploaded Document"
-            
-            if "claim" in msg_lower or "cover" in msg_lower or "bill" in msg_lower or "insurance" in msg_lower:
-                content = f"### 🛡️ Insurance Claim Eligibility & Coverage Audit ({first_doc})\n\n" \
-                          f"Based on your uploaded document `{first_doc}` (Page 1) and standard policy benchmarks, here is your claim analysis:\n\n" \
-                          f"#### 1. Claim Coverage Status: **Potentially Covered**\n" \
-                          f"Your outpatient services and diagnostic evaluations meet the primary medical necessity criteria.\n\n" \
-                          f"#### 2. Policy & Financial Breakdown:\n" \
-                          f"- **In-Network Benefit Level:** Covered at 80% after annual deductible.\n" \
-                          f"- **Applicable Co-pay:** $25.00 for outpatient evaluation (CPT 99214).\n" \
-                          f"- **Diagnostic Coverage:** Lab blood draw (CPT 36415) covered with 0% coinsurance in-network.\n\n" \
-                          f"> **Grounded Document Citation (Page 1):** \"{doc_context[:220]}...\"\n\n" \
-                          f"#### 3. Recommended Next Steps for Claim Approval:\n" \
-                          f"1. Ensure physician electronic signature is attached to the itemized bill.\n" \
-                          f"2. Submit the itemized statement via the **Submit New Claim** tab.\n" \
-                          f"3. Track live recorded status updates directly in your Patient Portal."
-            elif "code" in msg_lower or "icd" in msg_lower or "cpt" in msg_lower:
-                content = f"### 🩺 Clinical & Coding Intelligence ({first_doc})\n\n" \
-                          f"Based on page 1 of `{first_doc}`:\n\n" \
-                          f"- **Primary ICD-10 Diagnosis:** `E11.9` - Type 2 diabetes mellitus without complications.\n" \
-                          f"- **Secondary ICD-10 Diagnosis:** `I10` - Essential (primary) hypertension.\n" \
-                          f"- **CPT Procedure Code:** `99214` - Outpatient visit, established patient, moderate MDM.\n\n" \
-                          f"> **Evidence Snippet:** \"{doc_context[:200]}...\""
-            else:
-                content = f"### 📄 Grounded Document Analysis ({first_doc})\n\n" \
-                          f"I analyzed `{first_doc}`. Here are the key findings:\n\n" \
-                          f"- **Document Type:** Clinical Discharge & Insurance Document\n" \
-                          f"- **Extracted Summary:** {doc_context[:250]}...\n\n" \
-                          f"You can ask me whether your hospital bill can be claimed against your policy, request CPT/ICD codes, or check missing documentation!"
+
+        if document_chunks:
+
+            parts = [
+                "### Document-Based Response",
+                (
+                    "Gemini is currently unavailable. The following "
+                    "information is retrieved document evidence, "
+                    "not an independently generated medical or "
+                    "insurance decision."
+                ),
+                f"**Your question:** {user_message}",
+                "### Retrieved Evidence"
+            ]
+
+            for index, chunk in enumerate(document_chunks[:3], 1):
+
+                text = (chunk.get("content") or "").strip()
+
+                if not text:
+                    continue
+
+                document_name = chunk.get(
+                    "document_name",
+                    "Uploaded Document"
+                )
+
+                page = chunk.get("page_number")
+
+                page_label = (
+                    f"Page {page}"
+                    if page is not None
+                    else "Page unavailable"
+                )
+
+                parts.append(
+                    f"**{index}. {document_name} — {page_label}**\n\n"
+                    f"{text}"
+                )
+
+            parts.extend([
+                "### Important Limitations",
+                "- Claim approval cannot be confirmed automatically.",
+                "- Insurance coverage and policy exclusions require verification.",
+                "- Copays, deductibles and reimbursement amounts cannot be assumed.",
+                "- Medical codes must be checked against official coding guidelines.",
+                "- Consult the insurer or a qualified professional for final decisions."
+            ])
+
+            content = "\n\n".join(parts)
 
         elif role == "Doctor":
-            if "cms" in msg_lower or "form" in msg_lower:
-                content = "### 📄 CMS-1500 Claim Form Guidance\n\nTo create an official CMS-1500 claim form:\n" \
-                          "1. Open **CMS-1500 Claim Forms** in your sidebar.\n" \
-                          "2. Input patient demographics (Box 1-13).\n" \
-                          "3. Attach verified **ICD-10-CM** (Box 21) and **CPT** (Box 24D) codes.\n" \
-                          "4. Click **Export CMS-1500 PDF** for an official NUCC-formatted printable PDF."
-            else:
-                content = f"Hello Dr.! I am your Medical LLM Assistant. I can help you find ICD-10/CPT codes, analyze discharge summaries, pre-fill CMS-1500 claim forms, and extract diagnostic evidence for your encounters."
+
+            content = (
+                "Hello Dr.! Upload a clinical document or ask a question "
+                "about medical coding or CMS-1500 form guidance."
+            )
 
         elif role == "Patient":
-            content = "Welcome to your Patient Portal! I can help check whether your hospital bill can be claimed against your insurance policy, explain complex medical codes in simple terms, and guide your claim submission."
 
-        else: # Medical Coder
-            content = "Medical Coding Intelligence Portal ready. Upload clinical discharge summaries or policy PDFs to audit candidate ICD-10/CPT codes and generate preliminary coverage assessment reports."
+            content = (
+                "Welcome to your Patient Portal! Upload your medical bill "
+                "or insurance policy so I can retrieve relevant information. "
+                "I cannot independently confirm claim approval."
+            )
+
+        else:
+
+            content = (
+                "Medical Coding Intelligence Portal is ready. Upload a "
+                "clinical document or insurance policy for evidence-based review."
+            )
 
         return {
             "content": content,
             "citations": citations
         }
 
+    # ---------------------------------------------------------
+    # CLINICAL DOCUMENT ANALYSIS
+    # ---------------------------------------------------------
+
     @staticmethod
-    def analyze_clinical_document(extracted_text: str, filename: str) -> Dict[str, Any]:
-        diagnoses = [
-            {"code": "E11.9", "description": "Type 2 diabetes mellitus without complications", "confidence": "High", "evidence": "Notes document history of T2DM managed on Metformin."},
-            {"code": "I10", "description": "Essential (primary) hypertension", "confidence": "High", "evidence": "BP readings recorded at 138/86 mmHg."}
+    def analyze_clinical_document(
+        extracted_text: str,
+        filename: str
+    ) -> Dict[str, Any]:
+
+        text = extracted_text or ""
+        lower_text = text.lower()
+
+        diagnoses = []
+
+        diagnosis_rules = [
+            (
+                ["type 2 diabetes", "diabetes mellitus", "diabetes"],
+                "Type 2 diabetes mellitus",
+                "E11.9"
+            ),
+            (
+                ["hypertension", "high blood pressure"],
+                "Essential (primary) hypertension",
+                "I10"
+            ),
+            (
+                ["pneumonia"],
+                "Pneumonia, unspecified organism",
+                "J18.9"
+            ),
+            (
+                ["gerd", "gastroesophageal reflux"],
+                "Gastro-esophageal reflux disease",
+                "K21.9"
+            ),
+            (
+                ["low back pain"],
+                "Low back pain",
+                "M54.50"
+            )
         ]
-        procedures = [
-            {"code": "99214", "description": "Office or outpatient visit, established patient, moderate complexity", "confidence": "High", "evidence": "Multi-system review and medication adjustment performed."}
-        ]
-        if "chest" in extracted_text.lower() or "pneumonia" in extracted_text.lower():
-            diagnoses.append({"code": "J18.9", "description": "Pneumonia, unspecified organism", "confidence": "Moderate", "evidence": "Notes mention cough and fever."})
-            procedures.append({"code": "71046", "description": "Chest X-ray, 2 views", "confidence": "High", "evidence": "Radiology report referenced in notes."})
+
+        for keywords, description, code in diagnosis_rules:
+            if any(keyword in lower_text for keyword in keywords):
+                diagnoses.append({
+                    "code": code,
+                    "description": description,
+                    "system": "ICD-10-CM",
+                    "verification_status": (
+                        "Unverified candidate - requires professional review"
+                    )
+                })
 
         missing_info = []
-        if "signature" not in extracted_text.lower():
-            missing_info.append("Attending physician electronic signature")
-        if "dob" not in extracted_text.lower() and "date of birth" not in extracted_text.lower():
-            missing_info.append("Patient Date of Birth verification")
+
+        if not re.search(r"\bsignature\b", text, re.IGNORECASE):
+            missing_info.append(
+                "Physician signature - not found in extracted text"
+            )
+
+        if not re.search(
+            r"\b(dob|date of birth)\b",
+            text,
+            re.IGNORECASE
+        ):
+            missing_info.append(
+                "Patient date of birth - not found in extracted text"
+            )
 
         return {
             "document_name": filename,
             "extracted_diagnoses": diagnoses,
-            "extracted_procedures": procedures,
-            "code_suggestions": [
-                {"code": d["code"], "system": "ICD-10-CM", "description": d["description"], "evidence": d["evidence"], "page": 1} for d in diagnoses
-            ] + [
-                {"code": p["code"], "system": "CPT", "description": p["description"], "evidence": p["evidence"], "page": 1} for p in procedures
-            ],
+            "extracted_procedures": [],
+            "code_suggestions": diagnoses,
             "missing_documentation": missing_info,
-            "status": "Analysis Complete"
+            "status": "Document analysis completed - verify coding candidates",
+            "analysis_note": (
+                "Diagnoses are identified using keyword matching. "
+                "Codes are unverified candidates, not final coding decisions."
+            )
         }
 
-    @staticmethod
-    def assess_insurance_coverage(clinical_text: str, policy_text: str) -> Dict[str, Any]:
-        status = "Potentially Covered"
-        conditions = []
-        exclusions = []
-        next_steps = []
+    # ---------------------------------------------------------
+    # INSURANCE COVERAGE ASSESSMENT
+    # ---------------------------------------------------------
 
-        if "experimental" in clinical_text.lower():
-            status = "Potentially Not Covered"
-            exclusions.append("Investigational or experimental procedure clause flagged.")
-            next_steps.append("Obtain institutional review board or experimental procedure pre-authorization waiver.")
+    @staticmethod
+    def assess_insurance_coverage(
+        clinical_text: str,
+        policy_text: str
+    ) -> Dict[str, Any]:
+
+        clinical_text = clinical_text or ""
+        policy_text = policy_text or ""
+
+        clinical_available = bool(clinical_text.strip())
+        policy_available = bool(policy_text.strip())
+
+        clauses = []
+
+        if policy_available:
+            for line in policy_text.splitlines():
+                line = line.strip()
+
+                if line and any(
+                    term in line.lower()
+                    for term in (
+                        "coverage", "exclusion", "deductible",
+                        "copay", "co-pay", "coinsurance",
+                        "pre-authorization", "waiting period"
+                    )
+                ):
+                    clauses.append(line)
+
+        gaps = []
+
+        if not clinical_available:
+            gaps.append("Clinical documentation not provided")
+
+        if not policy_available:
+            gaps.append("Insurance policy text not provided")
+
+        if not clinical_available or not policy_available:
+            status = "Manual Review Required"
         else:
-            conditions.append("Standard outpatient medical necessity criteria met.")
-            conditions.append("In-network provider restriction verified.")
-            next_steps.append("Submit claim form with Box 21 ICD-10 diagnostic pointers.")
-            next_steps.append("Attach itemized clinical discharge notes.")
+            status = "Manual Review Required"
 
         return {
             "preliminary_status": status,
-            "relevant_diagnoses": ["E11.9 (Type 2 Diabetes)", "I10 (Essential Hypertension)"],
-            "suggested_codes": ["99214", "36415"],
-            "policy_clauses_identified": [
-                "Clause 4.1: Outpatient Evaluation & Management Covered at 80% after deductible.",
-                "Clause 8.3: Diagnostic blood draws (CPT 36415) covered with zero copay in-network."
+            "relevant_diagnoses": [],
+            "suggested_codes": [],
+            "policy_clauses_identified": clauses,
+            "conditions_met": [],
+            "exclusions_identified": [],
+            "documentation_gaps": gaps,
+            "recommended_next_steps": [
+                "Review the clinical documentation.",
+                "Review the applicable insurance policy.",
+                "Verify coverage and exclusions with the insurer."
             ],
-            "conditions_met": conditions,
-            "exclusions_identified": exclusions,
-            "documentation_gaps": ["Physician signature verification"],
-            "recommended_next_steps": next_steps,
-            "uncertainty_reasons": "Pre-authorization approval subject to final claims adjudicator audit."
+            "uncertainty_reasons": (
+                "Automated insurance adjudication is not configured. "
+                "Manual verification is required. No coverage or "
+                "reimbursement amount has been assumed."
+            )
         }

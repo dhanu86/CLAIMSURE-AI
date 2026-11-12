@@ -20,7 +20,7 @@ def search_codes(
     code_outs = []
     for c in results:
         code_outs.append(MedicalCodeOut(
-            id=c.get("id", c.get("code", "0")),
+            id=str(c.get("id") or c.get("code") or "0"),
             code=c.get("code", "N/A"),
             system=c.get("system", "ICD-10-CM"),
             description=c.get("description", "Medical Code"),
@@ -42,7 +42,7 @@ def get_code(code_str: str, db: Session = Depends(get_db), current_user = Depend
         raise HTTPException(status_code=404, detail=f"Medical code '{code_str}' not found")
     c = results[0]
     return MedicalCodeOut(
-        id=c.get("id", c.get("code", "0")),
+        id=str(c.get("id") or c.get("code") or "0"),
         code=c.get("code", "N/A"),
         system=c.get("system", "ICD-10-CM"),
         description=c.get("description", "Medical Code"),
