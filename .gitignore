@@ -27,3 +27,6 @@ storage/*
 .DS_Store
 .vercel/
 
+
+.vercel
+.env*
