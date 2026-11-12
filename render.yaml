@@ -15,7 +15,7 @@ services:
       - key: DATABASE_URL
         value: sqlite:///./claimsure.db
       - key: JWT_SECRET_KEY
-        value: claimsure-ai-production-super-secret-key-2026!
+        sync: false
       - key: JWT_ALGORITHM
         value: HS256
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
