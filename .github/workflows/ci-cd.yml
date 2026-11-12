@@ -1,19 +1,21 @@
+
 name: ClaimSure-AI CI/CD Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
-  # ------------------------------------------------------------------
-  # Job 1: Test & Validate Python Backend
-  # ------------------------------------------------------------------
+  # --------------------------------------------------
+  # Job 1: Backend tests and RAG evaluation
+  # --------------------------------------------------
   backend-test:
     name: Backend Lint & Pytest Suite
     runs-on: ubuntu-latest
+
     defaults:
       run:
         working-directory: ./backend
@@ -26,7 +28,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-          cache: "pip"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
 
       - name: Install Backend Dependencies
         run: |
@@ -41,23 +44,21 @@ jobs:
           ACCESS_TOKEN_EXPIRE_MINUTES: 60
           REFRESH_TOKEN_EXPIRE_DAYS: 7
           STORAGE_DIR: ./storage
-        run: |
-          python -m pytest tests -v
+        run: python -m pytest tests -v
 
-      - name: "MLOps: RAG Retrieval & Agentic AI Benchmark Evaluation"
+      - name: MLOps - RAG Retrieval & Agentic AI Evaluation
         env:
           DATABASE_URL: sqlite:///./test.db
           JWT_SECRET_KEY: test-secret-key-for-ci-cd-pipeline-2026!
-        run: |
-          python -m pytest tests/test_mlops_rag_eval.py -v -s
+        run: python -m pytest tests/test_mlops_rag_eval.py -v -s
 
-
-  # ------------------------------------------------------------------
-  # Job 2: Lint, Typecheck & Build React Frontend
-  # ------------------------------------------------------------------
+  # --------------------------------------------------
+  # Job 2: Frontend lint and production build
+  # --------------------------------------------------
   frontend-build:
     name: Frontend Lint & Production Build
     runs-on: ubuntu-latest
+
     defaults:
       run:
         working-directory: ./frontend
@@ -66,85 +67,92 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 20
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: "22"
+          cache: npm
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install Frontend Dependencies
-        run: npm ci || npm install
+        run: npm ci
 
-
-      - name: Run Frontend Linter (Oxlint)
+      - name: Run Frontend Linter
         run: npm run lint
 
-      - name: Run Frontend Typecheck & Build (Vite)
+      - name: Build Frontend
         env:
-          VITE_API_URL: ${{ secrets.VITE_API_URL || 'https://claimsure-ai-api.onrender.com/api' }}
+          VITE_API_URL: https://claimsureai-backend.onrender.com/api
         run: npm run build
 
-  # ------------------------------------------------------------------
-  # Job 3: Continuous Deployment to Vercel
-  # ------------------------------------------------------------------
+  # --------------------------------------------------
+  # Job 3: Production deployment to Vercel
+  # --------------------------------------------------
   deploy-vercel:
     name: Deploy to Vercel
-    needs: [ backend-test, frontend-build ]
+    needs: [backend-test, frontend-build]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Verify Vercel Secrets
-        id: vercel_check
+      - name: Verify Vercel Configuration
         run: |
-          if [ -n "${{ secrets.VERCEL_TOKEN }}" ] && [ -n "${{ secrets.VERCEL_ORG_ID }}" ] && [ -n "${{ secrets.VERCEL_PROJECT_ID }}" ]; then
-            echo "configured=true" >> $GITHUB_OUTPUT
-            echo "Vercel GitHub Action secrets detected."
-          else
-            echo "configured=false" >> $GITHUB_OUTPUT
-            echo "::notice title=Vercel Secrets::VERCEL_TOKEN / VERCEL_ORG_ID / VERCEL_PROJECT_ID are not set in GitHub Secrets. If using Vercel's native GitHub Integration, Vercel will deploy automatically on push."
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "::error::Vercel secrets are missing."
+            exit 1
           fi
+          echo "Vercel configuration detected."
 
-      - name: Deploy Preview to Vercel
-        uses: amondnet/vercel-action@v25
-        if: steps.vercel_check.outputs.configured == 'true' && github.event_name == 'pull_request'
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          working-directory: ./
+          node-version: "22"
 
-      - name: Deploy Production to Vercel
-        uses: amondnet/vercel-action@v25
-        if: steps.vercel_check.outputs.configured == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          vercel-args: '--prod'
-          working-directory: ./
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
 
-  # ------------------------------------------------------------------
-  # Job 4: Continuous Deployment for Backend AI/RAG Service (Render)
-  # ------------------------------------------------------------------
+      - name: Pull Vercel Project Configuration
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      - name: Build Vercel Production Artifacts
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy Prebuilt Project to Vercel
+        run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+
+  # --------------------------------------------------
+  # Job 4: Production deployment to Render
+  # --------------------------------------------------
   deploy-backend:
     name: Deploy Backend AI/RAG Service
-    needs: [ backend-test ]
+    needs: [backend-test, frontend-build]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
       - name: Trigger Render Cloud Deployment
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
-          if [ -n "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" ]; then
-            echo "Triggering automated Render deploy hook..."
-            curl -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
-            echo "Render deployment triggered successfully!"
-          else
-            echo "::notice title=Render Auto-Deploy::Render auto-deploys on git push via render.yaml configuration."
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::error::RENDER_DEPLOY_HOOK_URL secret is missing."
+            exit 1
           fi
 
+          echo "Triggering Render deployment..."
+
+          curl --fail-with-body --show-error --silent \
+            --request POST \
+            "$RENDER_DEPLOY_HOOK_URL"
+
+          echo "Render deployment request accepted."
